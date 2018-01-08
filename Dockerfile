@@ -1,6 +1,6 @@
 FROM inc0/tf-mkl:latest
 
-RUN apt-get update && apt-get -y install git
+RUN apt-get update && apt-get -y install git python-tk
 RUN pip install tqdm imageio scikit-image keras ipdb Flask
 RUN mkdir -p $(jupyter --data-dir)/nbextensions && \
     cd $(jupyter --data-dir)/nbextensions && \

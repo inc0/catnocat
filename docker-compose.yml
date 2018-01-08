@@ -14,13 +14,12 @@ services:
       - "tflogs:/logs"
       - "/opt/data/datasets:/datasets"
       - "/opt/data/models:/models"
-      - "/tmp/.X11-unix:/tmp/.X11-unix"
     deploy:
       restart_policy:
         condition: always
 
   tensorboard:
-    image: tensorflow
+    image: tensorflow/tensorflow
     command: "tensorboard --logdir /logs"
     ports:
       - "6006:6006"

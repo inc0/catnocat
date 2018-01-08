@@ -2,15 +2,21 @@
 # coding: utf-8
 
 import argparse
+import numpy as np
 import tensorflow as tf
 from tqdm import tqdm
 import time
 from sklearn.model_selection import train_test_split
 import os
 from flask import Flask, request, render_template
+import matplotlib.pyplot as plt
+import scipy.misc
+from PIL import Image
 
 
 app = Flask(__name__)
+tf.logging.set_verbosity(tf.logging.INFO)
+
 
 parser = argparse.ArgumentParser(description='Cat or no cat?')
 parser.add_argument('-s', required=False, help='Serve http', action='store_true')
@@ -20,7 +26,7 @@ serve = parser.parse_args().s
 square_size = 200
 img_path = "../../datasets/imagenet/parsed_cats_200/"  # Dir with training data. File name starts from 1 or 0 determine class
 n_epochs = 25
-model_fpath = "../../models/kotniekot.ckpt"  # Saved model path
+model_fpath = "../../models/kotniekot-cnn.ckpt"  # Saved model path
 model_name = "cnn-{}".format(int(time.time()))
 
 
@@ -40,14 +46,12 @@ X_train, X_test, y_train, y_test = train_test_split(filenames, labels, test_size
 def parse_image(image_string):
     image_decoded = tf.image.decode_image(image_string, channels=1)
     image_decoded = tf.image.resize_image_with_crop_or_pad(image_decoded, square_size, square_size)
-    image_decoded = tf.reshape(image_decoded, [-1])
     return image_decoded
 
 def _load_image(filename):
-    image_string = tf.read_file(filename)
-    image_decoded = parse_image(image_string)
-    return image_decoded
-
+    img_string = tf.read_file(filename)
+    img = parse_image(img_string)
+    return img
 
 def _get_image(filename, label):
     image_string = tf.read_file(img_path + filename)
@@ -73,13 +77,23 @@ with tf.name_scope("dataset"):
     test_iter = get_dataset(X_test, y_test)
 
 
-X = tf.placeholder(tf.float32, shape=(None, n_inputs), name="X")
+X = tf.placeholder(tf.float32, shape=(None, 200, 200, 1), name="X")
 y = tf.placeholder(tf.int64, shape=(None), name="y")
 
-with tf.name_scope("conv_net_definition"):
-    hidden1 = tf.layers.dense(X, 2000, name="hidden1",
+with tf.name_scope("conv_definition"):
+    f = tf.get_variable('conv1-fil', [5,5,1,15])
+    conv1 = tf.nn.conv2d(X, filter=f, strides=[1, 1, 1, 1], padding="SAME")
+    pool1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID")
+    f2 = tf.get_variable('conv2-fil', [3,3,15,15])
+    conv2 = tf.nn.conv2d(pool1, filter=f2, strides=[1, 1, 1, 1], padding="SAME")
+    pool2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="VALID")
+    fc1 = tf.contrib.layers.flatten(pool2)
+
+
+with tf.name_scope("conn_net_definition"):
+    hidden1 = tf.layers.dense(fc1, 7785, name="hidden1",
                               activation=tf.nn.relu)
-    hidden2 = tf.layers.dense(hidden1, 1000, name="hidden2",
+    hidden2 = tf.layers.dense(hidden1, 2000, name="hidden2",
                               activation=tf.nn.relu)
     hidden3 = tf.layers.dense(hidden2, 1000, name="hidden3",
                               activation=tf.nn.relu)
@@ -113,7 +127,6 @@ with tf.name_scope("eval"):
     tf.summary.scalar('recall', recall[1])
 
 
-
 def train(sess, train_writer, test_writer):
     init_time = time.time()
     for j in range(n_epochs):
@@ -131,13 +144,12 @@ sess = tf.Session()
 merged = tf.summary.merge_all()
 init = tf.global_variables_initializer()
 merged = tf.summary.merge_all()
-train_writer = tf.summary.FileWriter('/logs/dnn-{}/train'.format(model_name), sess.graph)
-test_writer = tf.summary.FileWriter('/logs/dnn-{}/test'.format(model_name), sess.graph)
+train_writer = tf.summary.FileWriter('/logs/{}/train'.format(model_name), sess.graph)
+test_writer = tf.summary.FileWriter('/logs/{}/test'.format(model_name), sess.graph)
 sess.run(init)
 sess.run(tf.local_variables_initializer())
 saver = tf.train.Saver()
-if os.path.isfile(model_fpath):
-    saved = saver.restore(sess, model_fpath)
+
 
 total_parameters = 0
 for variable in tf.trainable_variables():
@@ -147,7 +159,10 @@ for variable in tf.trainable_variables():
     for dim in shape:
         variable_parameters *= dim.value
     total_parameters += variable_parameters
-print("trainable params ", total_parameters)
+print(total_parameters)
+
+if os.path.isfile(model_fpath):
+    saved = saver.restore(sess, model_fpath)
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -168,4 +183,9 @@ if serve:
 else:
     train(sess, train_writer, test_writer)
     saved = saver.save(sess, model_fpath)
+    #input_data = sess.run(train_iter)
+    #out = sess.run(fc1, feed_dict={X: input_data[0], y: input_data[1]})
+    #print(out[0].shape)
+    #from IPython import embed; embed()
+
 

@@ -1,0 +1,34 @@
+version: '3'
+services:
+
+  jupyter:
+    build: .
+    command: "/run_jupyter.sh --allow-root --NotebookApp.password=sha1:b2b6e3b49730:0eef809147619bac77e4f71e88f9b21839201f7b"
+    ports:
+      - "8888:8888"
+      - "5000:5000"
+    environment:
+      - DISPLAY
+    volumes:
+      - "/opt/data/notebooks:/notebooks"
+      - "tflogs:/logs"
+      - "/opt/data/datasets:/datasets"
+      - "/opt/data/models:/models"
+      - "/tmp/.X11-unix:/tmp/.X11-unix"
+    deploy:
+      restart_policy:
+        condition: always
+
+  tensorboard:
+    image: tensorflow
+    command: "tensorboard --logdir /logs"
+    ports:
+      - "6006:6006"
+    volumes:
+      - "tflogs:/logs"
+    deploy:
+      restart_policy:
+        condition: always
+
+volumes:
+  tflogs:
